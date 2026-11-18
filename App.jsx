@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Lock,
   Key,
@@ -38,7 +38,11 @@ import {
   FileSpreadsheet,
   Server,
   Edit3,
-  Info
+  Info,
+  Camera,
+  CameraOff,
+  Image as ImageIcon,
+  ScanText
 } from 'lucide-react';
 
 // ============================================================================
@@ -588,6 +592,7 @@ const INITIAL_BOOKINGS = [
 // MAIN APPLICATION COMPONENT
 // ============================================================================
 export default function App() {
+  // 1. Staff Users Database (`sadmin` / `Akais@2020`)
   const [usersDb, setUsersDb] = useState(() => {
     try {
       const saved = localStorage.getItem('am_prod_users_v8');
@@ -597,6 +602,7 @@ export default function App() {
     }
   });
 
+  // 2. Signed JWT Session Token (Supports Remember Me persistent vs session storage)
   const [jwtToken, setJwtToken] = useState(() => {
     try {
       return (
@@ -609,6 +615,7 @@ export default function App() {
     }
   });
 
+  // 3. Events Database
   const [events, setEvents] = useState(() => {
     try {
       const saved = localStorage.getItem('am_prod_events_v8');
@@ -619,6 +626,7 @@ export default function App() {
   });
   const [selectedEventId, setSelectedEventId] = useState('EVT-2026-01');
 
+  // 4. Event Invitation Links Database
   const [inviteLinks, setInviteLinks] = useState(() => {
     try {
       const saved = localStorage.getItem('am_prod_invites_v8');
@@ -628,6 +636,7 @@ export default function App() {
     }
   });
 
+  // 5. Bookings Database
   const [bookings, setBookings] = useState(() => {
     try {
       const saved = localStorage.getItem('am_prod_bookings_v8');
@@ -637,6 +646,7 @@ export default function App() {
     }
   });
 
+  // 6. Global App Config (Browser-Direct Email Delivery & Main WhatsApp Sender)
   const [appConfig, setAppConfig] = useState(() => {
     try {
       const saved = localStorage.getItem('am_prod_app_config_v8');
@@ -651,18 +661,22 @@ export default function App() {
   const [testRecipientEmail, setTestRecipientEmail] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
+  // Super Admin Password Reset Modal State
   const [passwordModalUser, setPasswordModalUser] = useState(null);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [showNewPasswordText, setShowNewPasswordText] = useState(true);
   const [updatedCredentialSummary, setUpdatedCredentialSummary] = useState(null);
 
+  // Super Admin Bulk CSV Guest Import Modal State
   const [showBulkCsvModal, setShowBulkCsvModal] = useState(false);
   const [csvRawText, setCsvRawText] = useState('');
   const [parsedCsvRows, setParsedCsvRows] = useState([]);
   const [csvAutoCheckIn, setCsvAutoCheckIn] = useState(false);
 
+  // Active Navigation Route
   const [currentRoute, setCurrentRoute] = useState('/dashboard');
 
+  // Guest Self-Registration Invitation Portal State
   const [activeGuestInvite, setActiveGuestInvite] = useState(null);
   const [guestPortalSubmittedBooking, setGuestPortalSubmittedBooking] = useState(null);
   const [guestPortalForm, setGuestPortalForm] = useState({
@@ -675,6 +689,7 @@ export default function App() {
     quantity: 1
   });
 
+  // Login Form State (with Remember Me persistence)
   const [rememberMe, setRememberMe] = useState(() => {
     try {
       return localStorage.getItem('am_prod_remember_flag_v8') === 'true';
@@ -694,6 +709,7 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState(null);
 
+  // Super Admin Staff Creation Form
   const [provisionForm, setProvisionForm] = useState({
     name: '',
     username: '',
@@ -703,6 +719,7 @@ export default function App() {
     station: 'Event Operations Desk'
   });
 
+  // Edit Active Event Details Modal (Super Admin & Admin)
   const [showEditEventModal, setShowEditEventModal] = useState(false);
   const [editEventForm, setEditEventForm] = useState({
     name: '',
@@ -716,6 +733,7 @@ export default function App() {
     whatsappSenderLabel: ''
   });
 
+  // New Event Modal
   const [showNewEventModal, setShowNewEventModal] = useState(false);
   const [newEventForm, setNewEventForm] = useState({
     name: '',
@@ -729,6 +747,7 @@ export default function App() {
     whatsappSenderLabel: 'Official Event WhatsApp Desk'
   });
 
+  // Create New Invitation Link Form
   const [newInviteForm, setNewInviteForm] = useState({
     label: '',
     allowedTierMode: 'DROPDOWN_ALL',
@@ -737,6 +756,7 @@ export default function App() {
     recipientWhatsappToShare: ''
   });
 
+  // Direct Admin Desk Registration Form
   const [guestRegForm, setGuestRegForm] = useState({
     firstName: '',
     lastName: '',
@@ -747,7 +767,10 @@ export default function App() {
     quantity: 1
   });
 
+  // Batch Dispatch Progress Bar State
   const [batchProgress, setBatchProgress] = useState(null);
+
+  // Search, Filters, Modals & Live Camera Scanner
   const [searchQuery, setSearchQuery] = useState('');
   const [ticketTierFilter, setTicketTierFilter] = useState('ALL');
   const [ticketPreviewBooking, setTicketPreviewBooking] = useState(null);
@@ -755,23 +778,44 @@ export default function App() {
   const [manualQrInput, setManualQrInput] = useState('');
   const [scanResult, setScanResult] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [cameraActive, setCameraActive] = useState(true);
+  const [cameraError, setCameraError] = useState(null);
+  const [isScanningTextId, setIsScanningTextId] = useState(false);
+  const videoRef = useRef(null);
+  const lastScannedCodeRef = useRef({ code: '', time: 0 });
   const [toast, setToast] = useState(null);
 
+  // Persist state to localStorage
   useEffect(() => {
-    try { localStorage.setItem('am_prod_users_v8', JSON.stringify(usersDb)); } catch {}
+    try {
+      localStorage.setItem('am_prod_users_v8', JSON.stringify(usersDb));
+    } catch {}
   }, [usersDb]);
+
   useEffect(() => {
-    try { localStorage.setItem('am_prod_events_v8', JSON.stringify(events)); } catch {}
+    try {
+      localStorage.setItem('am_prod_events_v8', JSON.stringify(events));
+    } catch {}
   }, [events]);
+
   useEffect(() => {
-    try { localStorage.setItem('am_prod_invites_v8', JSON.stringify(inviteLinks)); } catch {}
+    try {
+      localStorage.setItem('am_prod_invites_v8', JSON.stringify(inviteLinks));
+    } catch {}
   }, [inviteLinks]);
+
   useEffect(() => {
-    try { localStorage.setItem('am_prod_bookings_v8', JSON.stringify(bookings)); } catch {}
+    try {
+      localStorage.setItem('am_prod_bookings_v8', JSON.stringify(bookings));
+    } catch {}
   }, [bookings]);
+
   useEffect(() => {
-    try { localStorage.setItem('am_prod_app_config_v8', JSON.stringify(appConfig)); } catch {}
+    try {
+      localStorage.setItem('am_prod_app_config_v8', JSON.stringify(appConfig));
+    } catch {}
   }, [appConfig]);
+
   useEffect(() => {
     try {
       if (jwtToken) {
@@ -801,6 +845,9 @@ export default function App() {
     showNotification(label);
   };
 
+  // ============================================================================
+  // VERIFY JWT SESSION & CURRENT AUTHENTICATED USER
+  // ============================================================================
   const sessionVerification = useMemo(() => verifyAndDecodeJwt(jwtToken), [jwtToken]);
 
   const authenticatedUser = useMemo(() => {
@@ -880,6 +927,9 @@ export default function App() {
     };
   }, [eventBookings]);
 
+  // ============================================================================
+  // NAVIGATION GUARD
+  // ============================================================================
   const navigateToRoute = (targetRoute) => {
     if (!authenticatedUser) {
       setCurrentRoute('/login');
@@ -904,6 +954,9 @@ export default function App() {
     setCurrentRoute(targetRoute);
   };
 
+  // ============================================================================
+  // AUTHENTICATION HANDLERS (`sadmin` / `Akais@2020`)
+  // ============================================================================
   const handleLoginSubmit = (e) => {
     if (e) e.preventDefault();
     setLoginError(null);
@@ -965,6 +1018,9 @@ export default function App() {
     showNotification('Signed out securely.');
   };
 
+  // ============================================================================
+  // REAL WORKING EMAIL DELIVERY ENGINE (EmailJS / REST API / Direct Mailto)
+  // ============================================================================
   const buildTicketEmailPayload = (booking, eventObj) => {
     const qrLines = booking.tickets
       .map((t, idx) => `Ticket #${idx + 1}: ${t.attendeeLabel} — QR ID: ${t.qrString}`)
@@ -1126,6 +1182,9 @@ export default function App() {
     showNotification(`Opened email draft for ${booking.email} in your Mail App.`);
   };
 
+  // ============================================================================
+  // SUPER ADMIN EDIT EVENT DETAILS (NAME, DATE, TIME, VENUE, CAPACITY, WA, STATUS)
+  // ============================================================================
   const openEditEventModal = () => {
     if (!currentRoleConfig?.canManageEvents) return;
     setEditEventForm({
@@ -1211,6 +1270,9 @@ export default function App() {
     showNotification(`Created event "${createdEvent.name}".`);
   };
 
+  // ============================================================================
+  // SUPER ADMIN STAFF PROVISIONING & PASSWORD EDIT / RESET
+  // ============================================================================
   const handleProvisionUserSubmit = (e) => {
     e.preventDefault();
     if (!authenticatedUser || authenticatedUser.role !== 'super_admin') return;
@@ -1323,6 +1385,9 @@ export default function App() {
     showNotification(`Updated password for ${passwordModalUser.username}.`);
   };
 
+  // ============================================================================
+  // APP CONFIG SAVE & LIVE TEST EMAIL DISPATCH
+  // ============================================================================
   const handleSaveAppConfig = (e) => {
     if (e) e.preventDefault();
     if (!configForm.senderEmail.trim() || !configForm.mainWhatsappNumber.trim()) {
@@ -1391,6 +1456,9 @@ export default function App() {
     showNotification(`Applied Main WhatsApp Sender (${mainNum}) to all ${events.length} events!`);
   };
 
+  // ============================================================================
+  // SUPER ADMIN BULK CSV GUEST REGISTRATION
+  // ============================================================================
   const parseBulkCsvContent = (rawText) => {
     setCsvRawText(rawText);
     const lines = String(rawText || '')
@@ -1550,6 +1618,9 @@ export default function App() {
     );
   };
 
+  // ============================================================================
+  // INVITATION LINKS & GUEST SELF-REGISTRATION PORTAL
+  // ============================================================================
   const getInviteUrlString = (invite) =>
     `${window.location.origin}/?event=${invite.eventId.toLowerCase()}&invite=${invite.token}`;
 
@@ -1762,6 +1833,9 @@ export default function App() {
     );
   };
 
+  // ============================================================================
+  // SINGLE & BATCH TICKET DISPATCH (REAL WORKING EMAIL + WHATSAPP QR IMAGE/ID)
+  // ============================================================================
   const handleDispatchBookingTickets = async (booking) => {
     if (!currentRoleConfig?.canBatchDispatch) return;
     const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
@@ -1809,7 +1883,14 @@ export default function App() {
       return;
     }
     const cleanGuestPhone = booking.whatsapp.replace(/[^0-9]/g, '');
-    const qrList = booking.tickets.map((t) => `• ${t.qrString}`).join('\n');
+    const qrList = booking.tickets
+      .map(
+        (t) =>
+          `• *${t.qrString}*\n  🖼️ Scannable QR Image: https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(
+            t.qrString
+          )}`
+      )
+      .join('\n');
     const message = [
       `*${currentEvent.name} — Official e-Ticket*`,
       `👤 Guest: ${booking.firstName} ${booking.lastName}`,
@@ -1818,10 +1899,10 @@ export default function App() {
       `📍 Venue: ${currentEvent.location}`,
       `📞 Official Event WhatsApp Sender: ${currentEvent.whatsappSenderNumber}`,
       ``,
-      `*Your Check-In QR Code ID(s):*`,
+      `*Your Check-In QR Code ID(s) & Scannable Pass:*`,
       qrList,
       ``,
-      `Please present your QR code at the entrance gate for instant check-in.`
+      `Present the QR image or show your Check-In QR Code ID at the entrance gate.`
     ].join('\n');
 
     const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
@@ -1842,7 +1923,47 @@ export default function App() {
       '_blank',
       'noopener,noreferrer'
     );
-    showNotification(`Opened WhatsApp ticket message for ${booking.firstName} ${booking.lastName}.`);
+    showNotification(
+      `Opened WhatsApp with scannable QR image link & ID for ${booking.firstName} ${booking.lastName}.`
+    );
+  };
+
+  const handleShareQrImageFile = async (booking) => {
+    const primaryTicket = booking.tickets[0];
+    if (!primaryTicket) return;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=20&data=${encodeURIComponent(
+      primaryTicket.qrString
+    )}`;
+    try {
+      const resp = await fetch(qrUrl);
+      const blob = await resp.blob();
+      const file = new File([blob], `${primaryTicket.qrString}.png`, {
+        type: 'image/png'
+      });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: `${currentEvent.name} — QR Pass`,
+          text: `Guest: ${booking.firstName} ${booking.lastName} | ID: ${primaryTicket.qrString}`,
+          files: [file]
+        });
+        showNotification(`Shared QR Pass PNG for ${booking.firstName} ${booking.lastName}!`);
+      } else {
+        const dlUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = dlUrl;
+        a.download = `${primaryTicket.qrString}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(dlUrl);
+        showNotification(
+          `Downloaded ${primaryTicket.qrString}.png — drag & drop it directly into WhatsApp!`
+        );
+      }
+    } catch {
+      showNotification('Could not generate PNG file. Use the WA link button instead.', 'warning');
+    }
   };
 
   const handleBatchDispatchAll = async () => {
@@ -1906,6 +2027,9 @@ export default function App() {
     }
   };
 
+  // ============================================================================
+  // OFFLINE MOBILE DOOR QR SCANNER (LIVE CAMERA + OCR TEXT ID + MANUAL)
+  // ============================================================================
   const handleScanQrCode = (qrInputRaw) => {
     const code = (qrInputRaw || '').trim();
     if (!code) return;
@@ -1976,6 +2100,122 @@ export default function App() {
     setManualQrInput('');
   };
 
+  useEffect(() => {
+    if (currentRoute !== '/scanner' || !cameraActive) return;
+
+    let stream = null;
+    let rafId = null;
+    let cancelled = false;
+
+    const startCamera = async () => {
+      setCameraError(null);
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setCameraError('Camera API unavailable. Ensure HTTPS is enabled on this site.');
+          return;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+
+        if ('BarcodeDetector' in window) {
+          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          const scanLoop = async () => {
+            if (cancelled) return;
+            try {
+              if (videoRef.current && videoRef.current.readyState >= 2) {
+                const barcodes = await detector.detect(videoRef.current);
+                if (barcodes.length > 0 && barcodes[0].rawValue) {
+                  const raw = barcodes[0].rawValue.trim();
+                  const now = Date.now();
+                  if (
+                    raw !== lastScannedCodeRef.current.code ||
+                    now - lastScannedCodeRef.current.time > 3000
+                  ) {
+                    lastScannedCodeRef.current = { code: raw, time: now };
+                    handleScanQrCode(raw);
+                  }
+                }
+              }
+            } catch {}
+            rafId = requestAnimationFrame(scanLoop);
+          };
+          rafId = requestAnimationFrame(scanLoop);
+        } else {
+          setCameraError(
+            'Camera active, but browser lacks native BarcodeDetector. Use Chrome/Android or enter QR code manually below.'
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCameraError(`Camera permission denied or unavailable: ${err.message}`);
+          setCameraActive(false);
+        }
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+  }, [currentRoute, cameraActive]);
+
+  const handleCaptureAndScanTextId = async () => {
+    if (!videoRef.current || videoRef.current.readyState < 2) {
+      showNotification('Turn on the camera first to scan a Check-In QR Code ID.', 'warning');
+      return;
+    }
+    setIsScanningTextId(true);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth || 640;
+      canvas.height = videoRef.current.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
+      let extractedText = '';
+      if ('TextDetector' in window) {
+        const textDetector = new window.TextDetector();
+        const blocks = await textDetector.detect(canvas);
+        extractedText = blocks.map((b) => b.rawValue).join(' ');
+      }
+
+      const idMatch = extractedText.match(/AM-[A-Z0-9-]+/i);
+      if (idMatch && idMatch[0]) {
+        const matchedCode = idMatch[0].toUpperCase();
+        setManualQrInput(matchedCode);
+        handleScanQrCode(matchedCode);
+      } else {
+        showNotification(
+          'Hold the printed Check-In QR Code ID (e.g. AM-EVT01-...) steady inside the box and tap again, or paste/tap below.',
+          'warning'
+        );
+      }
+    } catch {
+      showNotification(
+        'Direct OCR text scan not supported on this browser — scan the QR square or enter ID manually.',
+        'warning'
+      );
+    } finally {
+      setIsScanningTextId(false);
+    }
+  };
+
+  // ============================================================================
+  // CSV EXPORT FOR 3RD-PARTY OFFLINE CHECK-IN APPS
+  // ============================================================================
   const handleDownloadCsvExport = () => {
     if (!currentRoleConfig?.canExportCSV) return;
     const headers = [
@@ -2021,6 +2261,9 @@ export default function App() {
     showNotification(`Downloaded ${exportPreset} CSV (${rows.length} individual QR tickets).`);
   };
 
+  // ============================================================================
+  // SPECIAL VIEW: INTERACTIVE GUEST INVITATION REGISTRATION PORTAL
+  // ============================================================================
   if (activeGuestInvite) {
     const inviteEvent =
       events.find((ev) => ev.id === activeGuestInvite.eventId) || currentEvent;
@@ -2307,6 +2550,9 @@ export default function App() {
     );
   }
 
+  // ============================================================================
+  // VIEW 1: CLEAN PRODUCTION STAFF LOGIN PORTAL (NO QUICK ROLE SELECTOR)
+  // ============================================================================
   if (!authenticatedUser || currentRoute === '/login') {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between relative overflow-hidden font-sans">
@@ -2421,6 +2667,9 @@ export default function App() {
     );
   }
 
+  // ============================================================================
+  // VIEW 2: CLEAN PRODUCTION STAFF WORKSPACE
+  // ============================================================================
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
       {toast && (
@@ -2442,6 +2691,7 @@ export default function App() {
         </div>
       )}
 
+      {/* TOP NAVIGATION HEADER */}
       <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <AMLogo size={42} />
@@ -2565,6 +2815,7 @@ export default function App() {
         </div>
       </header>
 
+      {/* GLOBAL EVENT BAR WITH EDIT EVENT DETAILS BUTTON */}
       <div className="border-b border-slate-800/80 bg-slate-900/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -2651,7 +2902,9 @@ export default function App() {
         </div>
       </div>
 
+      {/* MAIN CONTENT AREA */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
+        {/* KPI Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
             <span className="text-[11px] font-bold uppercase text-slate-400">
@@ -2718,6 +2971,7 @@ export default function App() {
           </div>
         </div>
 
+        {/* ROUTE 1: `/dashboard` */}
         {currentRoute === '/dashboard' && (
           <div className="space-y-6">
             {currentRoleConfig.canBatchDispatch && (
@@ -3020,13 +3274,24 @@ export default function App() {
                                   Mail App
                                 </button>
                                 {b.whatsapp && (
-                                  <button
-                                    onClick={() => handleDirectWhatsAppTicketLaunch(b)}
-                                    className="px-2.5 py-1.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 font-bold flex items-center gap-1"
-                                  >
-                                    <MessageSquare className="w-3 h-3" />
-                                    <span>WA</span>
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => handleDirectWhatsAppTicketLaunch(b)}
+                                      className="px-2.5 py-1.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 font-bold flex items-center gap-1"
+                                      title="Send WhatsApp with Scannable QR Image Link & Check-In ID"
+                                    >
+                                      <MessageSquare className="w-3 h-3" />
+                                      <span>WA</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleShareQrImageFile(b)}
+                                      className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-teal-300 font-bold flex items-center gap-1"
+                                      title="Attach / Download QR Pass PNG Picture"
+                                    >
+                                      <ImageIcon className="w-3 h-3" />
+                                      <span>QR Pic</span>
+                                    </button>
+                                  </>
                                 )}
                               </>
                             )}
@@ -3041,6 +3306,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ROUTE 2: `/invites` */}
         {currentRoute === '/invites' && currentRoleConfig.canSendInvites && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-4">
@@ -3260,6 +3526,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ROUTE 3: `/export` */}
         {currentRoute === '/export' && currentRoleConfig.canExportCSV && (
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -3300,9 +3567,10 @@ export default function App() {
           </div>
         )}
 
+        {/* ROUTE 4: `/scanner` */}
         {currentRoute === '/scanner' && (
           <div className="max-w-3xl mx-auto bg-slate-900/90 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
                   Offline-Ready Mobile Door Check-In Scanner
@@ -3311,18 +3579,75 @@ export default function App() {
                   {currentEvent.name}
                 </h2>
               </div>
-              <button
-                onClick={() => setSoundEnabled((s) => !s)}
-                className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:text-white"
-                title="Toggle Scanner Sound"
-              >
-                {soundEnabled ? (
-                  <Volume2 className="w-4 h-4 text-emerald-400" />
-                ) : (
-                  <VolumeX className="w-4 h-4 text-slate-500" />
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCameraActive((prev) => !prev)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all ${
+                    cameraActive
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+                  }`}
+                >
+                  {cameraActive ? (
+                    <>
+                      <CameraOff className="w-4 h-4" />
+                      <span>Stop Camera</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-4 h-4" />
+                      <span>Open Camera</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setSoundEnabled((s) => !s)}
+                  className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:text-white"
+                  title="Toggle Scanner Sound"
+                >
+                  {soundEnabled ? (
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <VolumeX className="w-4 h-4 text-slate-500" />
+                  )}
+                </button>
+              </div>
             </div>
+
+            {cameraError && (
+              <div className="p-3 rounded-xl bg-amber-950/60 border border-amber-500/40 text-xs text-amber-200">
+                {cameraError}
+              </div>
+            )}
+
+            {cameraActive && (
+              <div className="relative rounded-2xl overflow-hidden bg-black border-2 border-emerald-500/50 aspect-video max-h-80 mx-auto">
+                <video
+                  ref={videoRef}
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div className="w-56 h-40 border-2 border-emerald-400 rounded-2xl shadow-[0_0_0_9999px_rgba(2,6,23,0.45)]" />
+                </div>
+                <div className="absolute bottom-3 inset-x-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="px-3 py-1 rounded-full bg-slate-950/85 text-[11px] font-bold text-emerald-300 border border-emerald-500/30">
+                    Point at QR Code OR Check-In ID Text
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isScanningTextId}
+                    onClick={handleCaptureAndScanTextId}
+                    className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-[11px] flex items-center gap-1.5 shadow-lg"
+                  >
+                    <ScanText className="w-3.5 h-3.5" />
+                    <span>{isScanningTextId ? 'Reading ID...' : 'Read QR Code ID Text'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {scanResult && (
               <div
@@ -3413,6 +3738,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ROUTE 5: `/config` */}
         {currentRoute === '/config' && currentRoleConfig.canManageEvents && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-5">
@@ -3770,6 +4096,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ROUTE 6: `/users` */}
         {currentRoute === '/users' && authenticatedUser.role === 'super_admin' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-4">
@@ -4001,6 +4328,9 @@ export default function App() {
         )}
       </main>
 
+      {/* ==================================================================== */}
+      {/* MODAL 1: EDIT ACTIVE EVENT DETAILS (SUPER ADMIN & ADMIN)             */}
+      {/* ==================================================================== */}
       {showEditEventModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
@@ -4192,6 +4522,9 @@ export default function App() {
         </div>
       )}
 
+      {/* ==================================================================== */}
+      {/* MODAL 2: CREATE NEW EVENT                                            */}
+      {/* ==================================================================== */}
       {showNewEventModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
@@ -4309,6 +4642,9 @@ export default function App() {
         </div>
       )}
 
+      {/* ==================================================================== */}
+      {/* MODAL 3: PRINTABLE PDF TICKET PASS PREVIEW                           */}
+      {/* ==================================================================== */}
       {ticketPreviewBooking && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white text-slate-900 rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-slate-200">
@@ -4382,6 +4718,9 @@ export default function App() {
         </div>
       )}
 
+      {/* ==================================================================== */}
+      {/* MODAL 4: SUPER ADMIN EDIT / RESET PASSWORD MODAL                     */}
+      {/* ==================================================================== */}
       {passwordModalUser && authenticatedUser.role === 'super_admin' && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
@@ -4525,6 +4864,9 @@ export default function App() {
         </div>
       )}
 
+      {/* ==================================================================== */}
+      {/* MODAL 5: SUPER ADMIN BULK GUEST REGISTRATION VIA CSV UPLOAD          */}
+      {/* ==================================================================== */}
       {showBulkCsvModal && authenticatedUser.role === 'super_admin' && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
@@ -4740,4 +5082,4 @@ export default function App() {
       )}
     </div>
   );
-}
+    }
